@@ -1,0 +1,11 @@
+# Binary
+docs-mcp
+
+# Environment
+.env
+
+# Go
+vendor/
+
+# macOS
+.DS_Store

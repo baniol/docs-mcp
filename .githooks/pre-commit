@@ -1,0 +1,8 @@
+#!/bin/sh
+# Pre-commit: run all quality checks before allowing a commit.
+# Enable with: make setup-hooks
+
+set -e
+
+echo ">>> pre-commit: running check-all..."
+make check-all

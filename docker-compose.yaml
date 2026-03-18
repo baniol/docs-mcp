@@ -1,0 +1,13 @@
+services:
+  docs-mcp:
+    build: .
+    ports:
+      - "${PORT:-8000}:${PORT:-8000}"
+    env_file:
+      - .env
+    volumes:
+      - repo-data:/data/repo
+    restart: unless-stopped
+
+volumes:
+  repo-data:
