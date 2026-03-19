@@ -15,9 +15,9 @@ type Tool struct {
 
 // ToolInputSchema is the JSON Schema for a tool's input.
 type ToolInputSchema struct {
-	Type       string                     `json:"type"`
-	Properties map[string]SchemaProperty  `json:"properties"`
-	Required   []string                   `json:"required,omitempty"`
+	Type       string                    `json:"type"`
+	Properties map[string]SchemaProperty `json:"properties"`
+	Required   []string                  `json:"required,omitempty"`
 }
 
 // SchemaProperty describes a single property in a JSON Schema.

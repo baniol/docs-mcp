@@ -17,10 +17,10 @@ type OnUpdateFunc func(newHash string)
 
 // RepoSyncer periodically pulls the repository and notifies on changes.
 type RepoSyncer struct {
-	client       RepoClient
-	interval     time.Duration
-	onUpdate     OnUpdateFunc
-	lastHash     string
+	client   RepoClient
+	interval time.Duration
+	onUpdate OnUpdateFunc
+	lastHash string
 }
 
 func New(client RepoClient, interval time.Duration, onUpdate OnUpdateFunc) *RepoSyncer {

@@ -347,4 +347,3 @@ func splitPipe(line string) []string {
 	}
 	return parts
 }
-

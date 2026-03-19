@@ -13,12 +13,12 @@ const (
 )
 
 type docEntry struct {
-	path    string
-	name    string
-	content string
-	chunks  []Chunk
+	path     string
+	name     string
+	content  string
+	chunks   []Chunk
 	termFreq map[string]int
-	length  int
+	length   int
 }
 
 // BM25Index implements the Searcher interface using BM25 ranking.
