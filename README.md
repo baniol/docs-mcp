@@ -188,3 +188,7 @@ internal/
   handlers/                 MCP tool handlers, smart query routing
   server/                   HTTP server, JSON-RPC 2.0, webhook
 ```
+
+## License
+
+[MIT](LICENSE)
