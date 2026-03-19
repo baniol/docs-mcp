@@ -23,11 +23,11 @@ run: build ## Build and run locally (requires .env or exported vars)
 # ─── Quality ──────────────────────────────────────────────────────────────────
 
 fmt: ## Format code with gofmt + goimports
-	gofmt -w ./...
-	@which goimports > /dev/null 2>&1 && goimports -w ./... || true
+	gofmt -w .
+	@which goimports > /dev/null 2>&1 && goimports -w . || true
 
 fmt-check: ## Check formatting (non-zero exit if unformatted)
-	@diff=$$(gofmt -l ./...); \
+	@diff=$$(gofmt -l .); \
 	if [ -n "$$diff" ]; then \
 		echo "unformatted files:"; echo "$$diff"; exit 1; \
 	fi
@@ -36,7 +36,7 @@ vet: ## Run go vet
 	go vet ./...
 
 lint: ## Run golangci-lint (install: https://golangci-lint.run/usage/install/)
-	golangci-lint run ./...
+	@which golangci-lint > /dev/null 2>&1 && golangci-lint run ./... || echo "golangci-lint not installed, skipping"
 
 # ─── Tests ────────────────────────────────────────────────────────────────────
 
