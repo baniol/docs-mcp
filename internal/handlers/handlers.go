@@ -243,12 +243,12 @@ func (h *Handler) smartTruncate(content, docPath string, originalLen, maxLength 
 
 	if len(toc) > 0 {
 		parts = append(parts, "", "## Table of Contents", "")
-		for _, h := range toc {
-			if h.Level > 6 {
+		for _, entry := range toc {
+			if entry.Level > 6 {
 				continue
 			}
-			indent := strings.Repeat("  ", h.Level-1)
-			parts = append(parts, fmt.Sprintf("%s- %s", indent, h.Text))
+			indent := strings.Repeat("  ", entry.Level-1)
+			parts = append(parts, fmt.Sprintf("%s- %s", indent, entry.Text))
 			if len(parts) > 25 {
 				break
 			}
@@ -338,8 +338,8 @@ func (h *Handler) GetSection(docPath, heading string) []TextContent {
 	if section == "" {
 		toc := docproc.ExtractTableOfContents(content)
 		var headings []string
-		for _, h := range toc {
-			headings = append(headings, h.Text)
+		for _, entry := range toc {
+			headings = append(headings, entry.Text)
 		}
 		if len(headings) > 0 {
 			return text(fmt.Sprintf("Section '%s' not found in '%s'.\nAvailable headings: %s",

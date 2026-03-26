@@ -187,7 +187,7 @@ func (s *Server) webhookHandler(w http.ResponseWriter, r *http.Request) {
 	docsChanged := false
 	for _, commit := range payload.Commits {
 		for _, f := range append(commit.Modified, commit.Added...) {
-			if strings.Contains(f, s.cfg.DocsPath) {
+			if strings.HasPrefix(f, s.cfg.DocsPath+"/") || f == s.cfg.DocsPath {
 				docsChanged = true
 				break
 			}

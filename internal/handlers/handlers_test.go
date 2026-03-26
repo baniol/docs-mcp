@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/baniol/docs-mcp/internal/config"
+	"github.com/baniol/docs-mcp/internal/repo"
 	"github.com/baniol/docs-mcp/internal/search"
 	"github.com/baniol/docs-mcp/internal/utils"
 )
@@ -29,7 +31,6 @@ func testConfig() *config.Config {
 		DocsPath:               "docs",
 		IncludeGithubLinks:     false,
 		SnippetSize:            200,
-		MaxSnippetSize:         400,
 		SnippetsPerResult:      2,
 		MaxDocumentLength:      8000,
 		LargeDocumentThreshold: 10000,
@@ -101,6 +102,89 @@ func TestSearchDocs_Caching(t *testing.T) {
 	_ = calls
 	if strings.Contains(result[0].Text, "No results") {
 		t.Error("second call should use cached result, not re-search")
+	}
+}
+
+// mockRepo implements RepoClient for handler tests.
+type mockRepo struct {
+	docs    []repo.DocumentInfo
+	content map[string]string
+}
+
+func (m *mockRepo) ListDocs(bool) ([]repo.DocumentInfo, error) { return m.docs, nil }
+func (m *mockRepo) GetDocContent(path string) (string, error) {
+	if c, ok := m.content[path]; ok {
+		return c, nil
+	}
+	return "", fmt.Errorf("not found: %s", path)
+}
+func (m *mockRepo) Sync() (bool, error) { return false, nil }
+
+func TestCallTool_AllToolsDispatched(t *testing.T) {
+	mr := &mockRepo{
+		docs:    []repo.DocumentInfo{{Name: "test.md", Path: "test.md", Size: 100}},
+		content: map[string]string{"test.md": "# Test\n\nHello world."},
+	}
+	ms := &mockSearcher{results: []search.SearchResult{
+		{Path: "test.md", Name: "test.md", Score: 1.0, Snippets: []string{"snippet"}},
+	}}
+	h := New(testConfig(), mr, ms, utils.NewCache(time.Minute))
+
+	tools := h.ListTools()
+	for _, tool := range tools {
+		t.Run(tool.Name, func(t *testing.T) {
+			args := map[string]any{}
+			for _, req := range tool.InputSchema.Required {
+				args[req] = "test"
+			}
+			result, err := h.CallTool(tool.Name, args)
+			if err != nil {
+				t.Errorf("CallTool(%s) returned error: %v", tool.Name, err)
+			}
+			if len(result) == 0 {
+				t.Errorf("CallTool(%s) returned empty result", tool.Name)
+			}
+		})
+	}
+}
+
+func TestCallTool_UnknownTool(t *testing.T) {
+	h := &Handler{cfg: testConfig(), searcher: &mockSearcher{}, cache: utils.NewCache(time.Minute)}
+	_, err := h.CallTool("nonexistent", nil)
+	if err == nil {
+		t.Error("expected error for unknown tool")
+	}
+}
+
+func TestSmartTruncate(t *testing.T) {
+	// Build a large document with sections
+	var sb strings.Builder
+	sb.WriteString("# Big Document\n\nThis is the summary paragraph.\n\n")
+	for i := range 20 {
+		sb.WriteString(fmt.Sprintf("## Section %d\n\n", i))
+		sb.WriteString(strings.Repeat("Lorem ipsum dolor sit amet. ", 50))
+		sb.WriteString("\n\n")
+	}
+	content := sb.String()
+
+	cfg := testConfig()
+	cfg.LargeDocumentThreshold = 1000
+	cfg.MaxDocumentLength = 2000
+	h := &Handler{cfg: cfg, cache: utils.NewCache(time.Minute)}
+
+	result := h.smartTruncate(content, "big.md", len(content), 2000)
+
+	if len(result) > 2200 { // some slack for appended metadata
+		t.Errorf("truncated result too long: %d chars", len(result))
+	}
+	if !strings.Contains(result, "Summary") {
+		t.Error("expected Summary section in truncated output")
+	}
+	if !strings.Contains(result, "Table of Contents") {
+		t.Error("expected Table of Contents in truncated output")
+	}
+	if !strings.Contains(result, "Big Document") {
+		t.Error("expected document title preserved")
 	}
 }
 

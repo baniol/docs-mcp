@@ -59,31 +59,57 @@ func TestExtractSummary(t *testing.T) {
 	}
 }
 
-func TestExtractDocumentMetadata(t *testing.T) {
-	meta := ExtractDocumentMetadata(testDoc, "my_document.md")
-	if meta.Title != "My Document" {
-		t.Errorf("expected title 'My Document', got %q", meta.Title)
+func TestExtractSection(t *testing.T) {
+	tests := []struct {
+		name    string
+		heading string
+		want    string
+		empty   bool
+	}{
+		{
+			name:    "exact match",
+			heading: "Section 1",
+			want:    "Some content here.",
+		},
+		{
+			name:    "case insensitive",
+			heading: "section 1",
+			want:    "Some content here.",
+		},
+		{
+			name:    "partial match",
+			heading: "Section 2",
+			want:    "More content.",
+		},
+		{
+			name:    "not found",
+			heading: "Nonexistent",
+			empty:   true,
+		},
 	}
-	if meta.Description == "" {
-		t.Error("expected non-empty description")
-	}
-	if meta.WordCount == 0 {
-		t.Error("expected non-zero word count")
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ExtractSection(testDoc, tc.heading)
+			if tc.empty {
+				if got != "" {
+					t.Errorf("expected empty, got %q", got)
+				}
+				return
+			}
+			if !strings.Contains(got, tc.want) {
+				t.Errorf("expected section to contain %q, got %q", tc.want, got)
+			}
+		})
 	}
 }
 
-func TestExtractSnippet(t *testing.T) {
-	content := "abcdefghijklmnopqrstuvwxyz"
-	snippet := ExtractSnippet(content, 10, 10)
-	if len(snippet) > 20 { // 10 + possible "..."
-		t.Errorf("snippet too long: %q", snippet)
+func TestExtractSection_NestedHeadings(t *testing.T) {
+	doc := "# Top\n\n## Parent\n\nParent text.\n\n### Child\n\nChild text.\n\n## Sibling\n\nSibling text.\n"
+	section := ExtractSection(doc, "Parent")
+	if !strings.Contains(section, "Child text.") {
+		t.Error("section should include nested sub-headings")
 	}
-}
-
-func TestSearchContent(t *testing.T) {
-	content := "The quick brown fox jumps over the lazy dog"
-	snippet := SearchContent(content, "fox", 20)
-	if !strings.Contains(strings.ToLower(snippet), "fox") {
-		t.Errorf("expected snippet to contain 'fox', got: %q", snippet)
+	if strings.Contains(section, "Sibling text.") {
+		t.Error("section should stop at same-level heading")
 	}
 }

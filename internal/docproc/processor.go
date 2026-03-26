@@ -25,15 +25,6 @@ type Navigation struct {
 	Files    []NavigationFile
 }
 
-// DocumentMetadata holds extracted metadata.
-type DocumentMetadata struct {
-	Title       string
-	Description string
-	Tags        []string
-	WordCount   int
-	CharCount   int
-}
-
 var mdLinkRe = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
 
 // ExtractNavigationFromReadme parses a README.md for navigation structure.
@@ -168,116 +159,6 @@ func ExtractSummary(content string, maxLen int) string {
 		summary = cut + "..."
 	}
 	return summary
-}
-
-// ExtractDocumentMetadata extracts title, description and word count.
-func ExtractDocumentMetadata(content, filename string) DocumentMetadata {
-	base := strings.TrimSuffix(filename, ".md")
-	base = strings.ReplaceAll(base, "_", " ")
-	base = strings.Title(base) //nolint:staticcheck
-
-	meta := DocumentMetadata{
-		Title:     base,
-		WordCount: len(strings.Fields(content)),
-		CharCount: len(content),
-	}
-
-	lines := strings.Split(content, "\n")
-
-	// Title from H1
-	for _, line := range lines[:min(10, len(lines))] {
-		if strings.HasPrefix(line, "# ") {
-			meta.Title = strings.TrimSpace(line[2:])
-			break
-		}
-	}
-
-	// Description from first paragraph after title
-	inDesc := false
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "# ") {
-			inDesc = true
-			continue
-		}
-		if strings.HasPrefix(line, "##") || strings.HasPrefix(line, "---") {
-			break
-		}
-		if inDesc && line != "" && !strings.HasPrefix(line, "#") {
-			meta.Description = line
-			break
-		}
-	}
-
-	// Tags from frontmatter
-	if strings.HasPrefix(content, "---") {
-		end := strings.Index(content[3:], "---")
-		if end >= 0 {
-			fm := content[3 : end+3]
-			for _, line := range strings.Split(fm, "\n") {
-				if strings.HasPrefix(strings.TrimSpace(line), "tags:") {
-					raw := strings.SplitN(line, ":", 2)
-					if len(raw) == 2 {
-						for _, tag := range strings.Split(raw[1], ",") {
-							if t := strings.TrimSpace(tag); t != "" {
-								meta.Tags = append(meta.Tags, t)
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	return meta
-}
-
-// SearchContent searches documents for query terms and returns matched snippets.
-func SearchContent(content, query string, maxLength int) string {
-	terms := strings.Fields(strings.ToLower(query))
-	lower := strings.ToLower(content)
-
-	bestPos := -1
-	for _, term := range terms {
-		if pos := strings.Index(lower, term); pos >= 0 {
-			if bestPos == -1 || pos < bestPos {
-				bestPos = pos
-			}
-		}
-	}
-
-	if bestPos == -1 {
-		return ExtractSnippet(content, 0, maxLength)
-	}
-	return ExtractSnippet(content, bestPos, maxLength)
-}
-
-// ExtractSnippet extracts a snippet of maxLen around position center.
-func ExtractSnippet(content string, center, maxLen int) string {
-	if len(content) == 0 {
-		return ""
-	}
-	start := center - maxLen/2
-	if start < 0 {
-		start = 0
-	}
-	end := start + maxLen
-	if end > len(content) {
-		end = len(content)
-		start = end - maxLen
-		if start < 0 {
-			start = 0
-		}
-	}
-
-	snippet := content[start:end]
-	if start > 0 {
-		snippet = "..." + snippet
-	}
-	if end < len(content) {
-		snippet = snippet + "..."
-	}
-	return snippet
 }
 
 // ExtractSection returns the content of a section identified by heading text.

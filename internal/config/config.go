@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"strconv"
@@ -29,7 +30,6 @@ type Config struct {
 	ChunkSize              int
 	ChunkOverlap           int
 	SnippetSize            int
-	MaxSnippetSize         int
 	SnippetsPerResult      int
 	MaxDocumentLength      int
 	LargeDocumentThreshold int
@@ -56,7 +56,6 @@ func Load() (*Config, error) {
 		ChunkSize:              envInt("CHUNK_SIZE", 800),
 		ChunkOverlap:           envInt("CHUNK_OVERLAP", 100),
 		SnippetSize:            envInt("SNIPPET_SIZE", 400),
-		MaxSnippetSize:         envInt("MAX_SNIPPET_SIZE", 600),
 		SnippetsPerResult:      envInt("SNIPPETS_PER_RESULT", 2),
 		MaxDocumentLength:      envInt("MAX_DOCUMENT_LENGTH", 8000),
 		LargeDocumentThreshold: envInt("LARGE_DOCUMENT_THRESHOLD", 10000),
@@ -71,6 +70,13 @@ func Load() (*Config, error) {
 
 	// Trim whitespace/quotes that can sneak in from .env files
 	c.GithubToken = strings.Trim(strings.TrimSpace(c.GithubToken), `"'`)
+
+	if c.GithubRepo == "" {
+		return nil, fmt.Errorf("GITHUB_REPO is required")
+	}
+	if c.DocsPath == "" {
+		return nil, fmt.Errorf("DOCS_PATH is required")
+	}
 
 	return c, nil
 }
