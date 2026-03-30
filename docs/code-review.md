@@ -1,145 +1,243 @@
 # Code Review — docs-mcp
 
-Data: 2026-03-18
+Data: 2026-03-30 (aktualizacja)
+Poprzedni review: 2026-03-18
 
 ## Podsumowanie
 
-Projekt jest dobrze zorganizowany — standardowy layout Go (`cmd/`, `internal/`), czytelna separacja odpowiedzialności, testy przy kodzie, graceful shutdown, pre-commit hook. Poniżej lista znalezionych problemów.
+Projekt jest dobrze zorganizowany — standardowy layout Go (`cmd/`, `internal/`), czytelna separacja odpowiedzialnosci, testy przy kodzie, graceful shutdown, pre-commit hook, CLAUDE.md. Od poprzedniego review naprawiono wszystkie P0 i P1, wiekszosc P2. Ponizej aktualna lista problemow.
 
 ---
 
-## P0 — Krytyczne
+## Status poprzedniego review (2026-03-18)
 
-### 1. Race condition na BM25Index
+Wszystkie problemy P0/P1 naprawione:
 
-**Plik:** `internal/search/bm25.go`
-
-`BM25Index` nie ma żadnej synchronizacji. `Search()` jest wywoływany z HTTP handlerów (wiele goroutines), a `Rebuild()` z syncera w osobnej goroutine. To jest data race — `Rebuild()` zeruje `docs` i `df` w trakcie gdy `Search()` może je iterować.
-
-**Fix:** Dodać `sync.RWMutex` — `RLock` w `Search()`, `Lock` w `Index()`/`Rebuild()`.
-
-### 2. Token w URL clone — wyciek w logach
-
-**Plik:** `internal/repo/client.go:36,61`
-
-`repoURL` zawiera token bezpośrednio w URL. Linia 61 loguje ten URL: `slog.Info("cloning repository", "url", repoURL, ...)`. Token trafi do logów.
-
-**Fix:** Użyć `gogithttp.BasicAuth` (tak jak w `Sync()`) zamiast embeddowania tokena w URL, lub zamaskować URL w logach.
+| # | Problem | Status |
+|---|---------|--------|
+| P0 #1 | Race condition na BM25Index | FIXED — dodano `sync.RWMutex` |
+| P0 #2 | Token w URL clone / wyciek w logach | FIXED — `BasicAuth` zamiast token w URL |
+| P1 #3 | Webhook nie robi Sync() | FIXED — webhook wywoluje `SyncRepo()` |
+| P1 #4 | readBody reczna implementacja | FIXED — zamienione na `io.ReadAll` |
+| P1 #5 | Hardcoded `docs/current_docs` | FIXED — uzywa `cfg.DocsPath` |
+| P1 #6 | Hardcoded `master` w linkach | FIXED — uzywa `cfg.GithubBranch` |
+| P2 #7 | Niespojne auth w repo client | FIXED — oba uzyja `BasicAuth` |
+| P2 #8 | envInt cicho ignoruje | FIXED — dodano `slog.Warn` |
+| P2 #9 | Handler.repo to konkretny typ | FIXED — interfejs `RepoClient` |
+| P2 #10 | Hardcoded tool name w MCP | FIXED — `CallTool` dispatch |
+| P2 #11 | Custom min() | FIXED — uzywa builtin `min()` |
+| P2 #12 | ValidateDocPath nieuzywany | FIXED — usunieto |
+| P3 #13 | godotenv indirect | FIXED — poprawnie w require |
+| P3 #14 | splitNonEmpty | OK — uproszczony do one-liner |
+| P3 #15 | ListDocs unused pattern | FIXED — usunieto |
+| P3 #16 | config_test.go t.Setenv | CZESCIOWO — patrz #8 ponizej |
+| P3 #17 | Brak context propagation | OTWARTE — patrz #9 ponizej |
+| P3 #18 | Cache brak eviction | OTWARTE — patrz #4 ponizej |
 
 ---
+
+## Nowe i otwarte problemy
 
 ## P1 — Istotne
 
-### 3. Webhook nie robi Sync() przed BuildIndex()
+### 1. Race condition: webhook sync vs background syncer
 
-**Plik:** `internal/server/server.go:203-208`
+**Plik:** `internal/server/server.go:201-209`, `internal/syncer/syncer.go`
 
-Webhook triggeruje `go func() { handler.BuildIndex() }()` ale nigdy nie wywołuje `repo.Sync()` (pull). `BuildIndex()` czyta pliki z dysku, ale repo nie zostało zaktualizowane. Cały sens webhooka to natychmiastowa reakcja na push.
+Webhook odpala goroutine z `SyncRepo()` + `BuildIndex()` + `InvalidateCache()`. Background syncer robi to samo co `SyncInterval` sekund. Oba operuja na tym samym `repo.Client` (git pull na tym samym worktree) bez synchronizacji. Dwa rownoczesne `Pull()` na jednym worktree moga uszkodzic stan repo.
 
-### 4. readBody — ręczna implementacja zamiast stdlib
+`BM25Index` ma swoj mutex, ale `repo.Client` — nie. Problemem nie jest indeks, lecz warstwa git.
 
-**Plik:** `internal/server/server.go:236-247`
+**Fix:** Dodac mutex na poziomie sync operacji w `repo.Client`, albo kanal serializujacy sync requesty (np. `chan struct{}` z jednym consumerem).
 
-`readBody()` ręcznie czyta body i łamie pętlę na każdym błędzie, ale zawsze zwraca `nil` error. Jeśli read się wywali na prawdziwym I/O error, dane będą niekompletne a webhook to zaakceptuje.
+### 2. Brak limitu na webhook body
 
-**Fix:** Zamienić na `io.ReadAll(r.Body)`.
+**Plik:** `internal/server/server.go:149`
 
-### 5. Hardcoded `docs/current_docs` w webhooku i formatowaniu
+```go
+body, err := io.ReadAll(r.Body)
+```
 
-**Pliki:**
-- `internal/server/server.go:190` — `strings.Contains(f, "docs/current_docs")`
-- `internal/utils/format.go:42,68` — `blob/master/docs/current_docs/`
+Klient moze wyslac dowolnie duzy payload — brak limitu na rozmiar body. Przy braku HMAC secret (opcjonalny) kazdy moze wyslac zapytanie.
 
-Te ścieżki powinny pochodzić z `Config.DocsPath`, nie być hardcoded. Jeśli ktoś zmieni `DOCS_PATH`, webhook przestanie reagować a linki będą błędne.
+**Fix:** Uzyc `http.MaxBytesReader(w, r.Body, 1<<20)` (1 MB powinno wystarczyc na webhook payload).
 
-### 6. Hardcoded `master` w linkach GitHub
+### 3. Chunki indeksowane ale nieuzywane w wyszukiwaniu
 
-**Pliki:** `internal/handlers/handlers.go:139`, `internal/utils/format.go:42,68`
+**Plik:** `internal/search/bm25.go:70`
 
-`blob/master/...` powinno być `blob/{cfg.GithubBranch}/...`. Default branch to `master` w configu, ale jeśli ktoś ustawi `main`, linki będą złe.
+```go
+chunks: ChunkDocument(content, b.chunkSize, b.chunkOverlap),
+```
+
+Chunki sa tworzone i przechowywane w kazdym `docEntry`, ale scoring operuje na pelnodokumentowym `termFreq` (z calego `content`). Chunki nigdzie nie sa czytane po zapisaniu. To niepotrzebna alokacja pamieci — kazdy dokument trzyma zduplikowana tresc (raz jako `content`, raz jako chunki).
+
+**Fix:** Albo usunac chunking z indeksu (jesli BM25 ma dzialac na poziomie dokumentu), albo zaimplementowac chunk-level scoring (lepsze wyniki dla duzych dokumentow — snippet extraction moze tez korzystac z chunkow).
 
 ---
 
 ## P2 — Do poprawy
 
-### 7. Niespójne auth w repo client
+### 4. Cache bez limitu rozmiaru i bez proaktywnej eviction
 
-**Plik:** `internal/repo/client.go`
+**Plik:** `internal/utils/cache.go`
 
-`Initialize()` embedduje token w URL (linia 36), ale `Sync()` używa `BasicAuth` (linia 166). Dwa różne mechanizmy auth dla tego samego repo — ujednolicić na `BasicAuth`.
+Cache rosnie bez ograniczen. Kazdy unikalny query tworzy nowy wpis (`search_<query>_<max>`). Ekspirowane wpisy sa usuwane tylko przy `Get()` — jesli klucz nigdy nie jest ponownie odczytany, wpis zyje w pamieci wiecznie.
 
-### 8. envInt cicho ignoruje nieprawidłowe wartości
+**Fix:** Dodac max entries (np. LRU) lub periodic eviction (goroutine z timerem).
 
-**Plik:** `internal/config/config.go:95-102`
+### 5. ReadDoc — niespójna logika cache
 
-Jeśli ktoś ustawi `PORT=abc`, dostanie domyślny port bez żadnego ostrzeżenia. To prawdopodobnie błąd konfiguracji i powinien być zgłoszony.
+**Plik:** `internal/handlers/handlers.go:193-199`
 
-### 9. Handler.repo to konkretny typ, nie interfejs
+```go
+if v, ok := h.cache.Get(cacheKey); ok {
+    cached := v.(string)
+    if len(cached) <= maxLength {
+        return text(cached)
+    }
+}
+```
 
-**Plik:** `internal/handlers/handlers.go:18`
+Jesli cached string jest dluzszy niz `maxLength`, cache hit jest ignorowany, ale zawartosc jest czytana od nowa bez zapisu do cache z innym kluczem. Powoduje powtarzalne chybienia.
 
-`repo *repo.Client` — zgodnie z Go conventions i CLAUDE.md ("interfaces defined at consumer side"), `Handler` powinien zależeć od interfejsu. Blokuje to łatwe testowanie — w `handlers_test.go` pole `repo` jest `nil`, co ogranicza pokrycie testowe.
+### 6. Server start error nie jest propagowany
 
-### 10. MCP handler — hardcoded tool name
+**Plik:** `cmd/server/main.go:93-97`
 
-**Plik:** `internal/server/server.go:130`
+```go
+go func() {
+    if err := srv.Start(); err != nil {
+        slog.Error("server error", "err", err)
+    }
+}()
+```
 
-`params.Name != "query_infrastructure_docs"` — jeśli dojdzie nowy tool, trzeba pamiętać o zmianie warunku. Lepiej oprzeć dispatching na mapie tool name -> handler function.
+Jesli `ListenAndServe` zwroci error natychmiast (port zajety), program loguje blad ale wisi czekajac na signal (linia 99: `<-quit`). Powinien wyjsc z kodem 1.
 
-### 11. Custom min() w dwóch pakietach
+**Fix:** Uzyc kanalu error:
+```go
+errCh := make(chan error, 1)
+go func() { errCh <- srv.Start() }()
+select {
+case <-quit: // graceful shutdown
+case err := <-errCh: // startup failure
+    slog.Error("server failed", "err", err)
+    os.Exit(1)
+}
+```
 
-**Pliki:** `internal/handlers/handlers.go:332`, `internal/docproc/processor.go:294`
+### 7. Hardcoded wersja serwera
 
-Go 1.21+ ma wbudowane `min()`. Przy Go 1.26 te custom funkcje są zbędne i mogą kolidować z builtin.
+**Plik:** `internal/server/server.go:116`
 
-### 12. Brak ValidateDocPath w ścieżce request
+```go
+"version": "1.0.0",
+```
 
-`utils/validate.go` definiuje `ValidateDocPath()` ale nigdzie nie jest wywoływana. `ReadDoc()` i `GetDocContent()` z niej nie korzystają. Albo użyć, albo usunąć martwy kod.
+Wersja jest na sztywno. Powinna byc brana z tagu git / zmiennej buildowej (`-ldflags "-X main.version=..."`) i przekazywana przez config.
 
 ---
 
 ## P3 — Drobne
 
-### 13. godotenv oznaczony jako indirect
+### 8. config_test.go — os.Unsetenv bez cleanup
 
-`go.mod:23` — `godotenv` jest importowany bezpośrednio w `main.go` ale oznaczony `// indirect`. Uruchomić `go mod tidy`.
+**Plik:** `internal/config/config_test.go:10-12, 24`
 
-### 14. splitNonEmpty — niepotrzebna custom implementacja
+`TestLoad_MissingToken_DefaultRepo` uzywa `os.Unsetenv()` bezposrednio — nie `t.Setenv()`. Te zmiany nie sa cofane po tescie, co moze wplynac na inne testy przy rownoczesnym uruchamianiu.
 
-`config.go:113-126` — zastąpić przez `strings.FieldsFunc(s, func(r rune) bool { return r == ',' })`.
+**Fix:** Zamienic na `t.Setenv("GITHUB_TOKEN", "")` + `t.Setenv("GITHUB_REPO", "")` itd. (lub dedykowany helper).
 
-### 15. ListDocs — nieużywany pattern
+### 9. Brak context propagation w handlerach
 
-`repo/client.go:84-100` — zmienna `pattern` jest ustawiana ale nigdy nie używana (linia 100: `_ = pattern`).
+**Plik:** `internal/server/server.go`, `internal/handlers/handlers.go`
 
-### 16. config_test.go — ręczny cleanup env vars
+Zaden handler nie przekazuje `r.Context()` w dol. Jesli klient zamknie polaczenie, serwer dalej przetwarza request (czyta pliki, odpytuje indeks).
 
-Testy configu ustawiają zmienne env przez `os.Setenv`. Lepiej użyć `t.Setenv()` (Go 1.17+) — automatycznie cofa zmiany.
+### 10. tokenize() alokuje stop words map przy kazdym wywolaniu
 
-### 17. Brak context propagation w handlerach
+**Plik:** `internal/search/bm25.go:181`
 
-Żaden handler nie przekazuje `r.Context()` w dół. Jeśli klient zamknie połączenie, serwer dalej przetwarza request.
+```go
+func tokenize(text string) []string {
+    stopWords := map[string]bool{...}
+```
 
-### 18. Cache — brak eviction
+Mapa stop words jest tworzona od nowa przy kazdym wywolaniu `tokenize()` — a ta funkcja jest wolana dla kazdego dokumentu przy indeksowaniu i dla kazdego query przy wyszukiwaniu. Powinna byc package-level `var`.
 
-Ekspirowane wpisy są usuwane tylko przy `Get()`. Jeśli klucz nigdy nie jest ponownie odczytany, wpis żyje w pamięci wiecznie.
+### 11. Brak IdleTimeout na HTTP server
+
+**Plik:** `internal/server/server.go:31-36`
+
+`ReadTimeout` i `WriteTimeout` sa ustawione, ale brakuje `IdleTimeout`. Przy keep-alive connections idle polaczenia moga akumulowac sie.
+
+### 12. Nieuzywane pole SHA w DocumentInfo
+
+**Plik:** `internal/repo/types.go:8`
+
+`DocumentInfo` ma pole `SHA` ale nigdzie nie jest wypelniane w `ListDocs`. Albo uzywac, albo usunac.
+
+### 13. BasicAuth — username convention
+
+**Plik:** `internal/repo/client.go:38-41`
+
+```go
+auth = &gogithttp.BasicAuth{
+    Username: c.cfg.GithubToken,
+    Password: "",
+}
+```
+
+Standardowa konwencja GitHub API to `Username: "x-access-token"`, `Password: token`. Obecna forma dziala dla PAT-ow, ale nie dla GitHub App installation tokens.
+
+### 14. API key porownywanie — timing side-channel
+
+**Plik:** `internal/server/middleware.go:26`
+
+```go
+if keySet[token] {
+```
+
+Map lookup nie jest constant-time. Niski risk przy API keys, ale `subtle.ConstantTimeCompare` byloby poprawniejsze.
+
+### 15. Markdown table separator detection
+
+**Plik:** `internal/docproc/processor.go:51`
+
+```go
+!strings.HasPrefix(line, "|--")
+```
+
+Nie lapie typowych separatorow `| --- | --- |` ani `|:---|:---|`. Moze blednie traktowac separator jako dane.
+
+### 16. ChunkDocument — pos tracking off-by-error
+
+**Plik:** `internal/search/chunker.go:53`
+
+```go
+pos += paraLen + 2 // +2 for "\n\n"
+```
+
+Przy ostatnim paragrafie (brak trailing `\n\n`) `pos` liczy dodatkowe 2 znaki. Chunk `End` moze przekraczac dlugosc content.
+
+### 17. min8() zamiast builtin min
+
+**Plik:** `internal/syncer/syncer.go:71-76`
+
+Custom `min8()` moze byc zastapione przez `min(8, len(s))` z Go 1.21+ builtin.
 
 ---
 
-## Podsumowanie priorytetów
+## Podsumowanie priorytetow
 
-| Prio | Issue | Effort |
-|------|-------|--------|
-| P0 | #1 Race condition na BM25Index | Mały |
-| P0 | #2 Token w logach | Mały |
-| P1 | #3 Webhook nie robi Sync | Mały |
-| P1 | #4 readBody → io.ReadAll | Mały |
-| P1 | #5-6 Hardcoded paths/branch | Mały |
-| P2 | #7 Niespójne auth w repo | Mały |
-| P2 | #9 Interfejs zamiast konkretu | Średni |
-| P2 | #10-12 Reszta P2 | Mały |
-| P3 | #13-18 Drobne | Mały |
-
-## Ocena jako template
-
-Projekt jest solidną bazą na template — layout, konwencje, testy, Makefile, graceful shutdown, pre-commit hook, CLAUDE.md. Po fixach P0/P1 gotowy do użycia jako wzorzec.
+| Prio | # | Problem | Effort |
+|------|---|---------|--------|
+| P1 | 1 | Race condition webhook vs syncer | Sredni |
+| P1 | 2 | Brak limitu na webhook body | Maly |
+| P1 | 3 | Chunki indeksowane ale nieuzywane | Sredni |
+| P2 | 4 | Cache bez limitu / eviction | Sredni |
+| P2 | 5 | ReadDoc niespojny cache | Maly |
+| P2 | 6 | Server start error nie propagowany | Maly |
+| P2 | 7 | Hardcoded wersja serwera | Maly |
+| P3 | 8-17 | Drobne | Maly |
