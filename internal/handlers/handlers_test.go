@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -11,6 +12,8 @@ import (
 	"github.com/baniol/docs-mcp/internal/search"
 	"github.com/baniol/docs-mcp/internal/utils"
 )
+
+var ctx = context.Background()
 
 // mockSearcher allows controlling search results in tests.
 type mockSearcher struct {
@@ -45,9 +48,9 @@ func TestSmartQuery_List(t *testing.T) {
 	h2 := &Handler{
 		cfg:      testConfig(),
 		searcher: ms,
-		cache:    utils.NewCache(time.Minute),
+		cache:    utils.NewCache(time.Minute, 1000),
 	}
-	result := h2.SearchDocs("kubernetes", 5)
+	result := h2.SearchDocs(ctx, "kubernetes", 5)
 	if len(result) == 0 || result[0].Type != "text" {
 		t.Error("expected text result")
 	}
@@ -60,9 +63,9 @@ func TestSmartQuery_EmptyQuery(t *testing.T) {
 	h := &Handler{
 		cfg:      testConfig(),
 		searcher: &mockSearcher{},
-		cache:    utils.NewCache(time.Minute),
+		cache:    utils.NewCache(time.Minute, 1000),
 	}
-	result := h.SmartQuery("")
+	result := h.SmartQuery(ctx, "")
 	if len(result) == 0 {
 		t.Fatal("expected result")
 	}
@@ -75,9 +78,9 @@ func TestSearchDocs_NoResults(t *testing.T) {
 	h := &Handler{
 		cfg:      testConfig(),
 		searcher: &mockSearcher{results: nil},
-		cache:    utils.NewCache(time.Minute),
+		cache:    utils.NewCache(time.Minute, 1000),
 	}
-	result := h.SearchDocs("unknownterm", 5)
+	result := h.SearchDocs(ctx, "unknownterm", 5)
 	if !strings.Contains(result[0].Text, "No results found") {
 		t.Errorf("expected 'No results found', got: %s", result[0].Text)
 	}
@@ -91,14 +94,14 @@ func TestSearchDocs_Caching(t *testing.T) {
 	h := &Handler{
 		cfg:      testConfig(),
 		searcher: ms,
-		cache:    utils.NewCache(time.Minute),
+		cache:    utils.NewCache(time.Minute, 1000),
 	}
 
-	h.SearchDocs("test", 5)
+	h.SearchDocs(ctx, "test", 5)
 	calls++
 	// Second call should hit cache
 	ms.results = nil // change results to confirm cache is used
-	result := h.SearchDocs("test", 5)
+	result := h.SearchDocs(ctx, "test", 5)
 	_ = calls
 	if strings.Contains(result[0].Text, "No results") {
 		t.Error("second call should use cached result, not re-search")
@@ -128,7 +131,7 @@ func TestCallTool_AllToolsDispatched(t *testing.T) {
 	ms := &mockSearcher{results: []search.SearchResult{
 		{Path: "test.md", Name: "test.md", Score: 1.0, Snippets: []string{"snippet"}},
 	}}
-	h := New(testConfig(), mr, ms, utils.NewCache(time.Minute))
+	h := New(testConfig(), mr, ms, utils.NewCache(time.Minute, 1000))
 
 	tools := h.ListTools()
 	for _, tool := range tools {
@@ -137,7 +140,7 @@ func TestCallTool_AllToolsDispatched(t *testing.T) {
 			for _, req := range tool.InputSchema.Required {
 				args[req] = "test"
 			}
-			result, err := h.CallTool(tool.Name, args)
+			result, err := h.CallTool(ctx, tool.Name, args)
 			if err != nil {
 				t.Errorf("CallTool(%s) returned error: %v", tool.Name, err)
 			}
@@ -149,8 +152,8 @@ func TestCallTool_AllToolsDispatched(t *testing.T) {
 }
 
 func TestCallTool_UnknownTool(t *testing.T) {
-	h := &Handler{cfg: testConfig(), searcher: &mockSearcher{}, cache: utils.NewCache(time.Minute)}
-	_, err := h.CallTool("nonexistent", nil)
+	h := &Handler{cfg: testConfig(), searcher: &mockSearcher{}, cache: utils.NewCache(time.Minute, 1000)}
+	_, err := h.CallTool(ctx, "nonexistent", nil)
 	if err == nil {
 		t.Error("expected error for unknown tool")
 	}
@@ -170,7 +173,7 @@ func TestSmartTruncate(t *testing.T) {
 	cfg := testConfig()
 	cfg.LargeDocumentThreshold = 1000
 	cfg.MaxDocumentLength = 2000
-	h := &Handler{cfg: cfg, cache: utils.NewCache(time.Minute)}
+	h := &Handler{cfg: cfg, cache: utils.NewCache(time.Minute, 1000)}
 
 	result := h.smartTruncate(content, "big.md", len(content), 2000)
 
@@ -189,7 +192,7 @@ func TestSmartTruncate(t *testing.T) {
 }
 
 func TestListTools(t *testing.T) {
-	h := &Handler{cfg: testConfig(), searcher: &mockSearcher{}, cache: utils.NewCache(time.Minute)}
+	h := &Handler{cfg: testConfig(), searcher: &mockSearcher{}, cache: utils.NewCache(time.Minute, 1000)}
 	tools := h.ListTools()
 
 	wantNames := []string{"query_infrastructure_docs", "search_docs", "get_document", "get_section", "list_docs"}

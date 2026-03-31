@@ -62,28 +62,17 @@ Usunieto pole `chunks` z `docEntry` oraz wywolanie `ChunkDocument()` z indeksowa
 
 ## P2 — Do poprawy
 
-### 4. Cache bez limitu rozmiaru i bez proaktywnej eviction
+### 4. ~~Cache bez limitu rozmiaru i bez proaktywnej eviction~~ FIXED
 
 **Plik:** `internal/utils/cache.go`
 
-Cache rosnie bez ograniczen. Kazdy unikalny query tworzy nowy wpis (`search_<query>_<max>`). Ekspirowane wpisy sa usuwane tylko przy `Get()` — jesli klucz nigdy nie jest ponownie odczytany, wpis zyje w pamieci wiecznie.
+Dodano `maxEntries` parametr do `NewCache()` z eviction najstarszego wpisu po przekroczeniu limitu. Dodano background goroutine z periodic eviction expired entries co TTL. Nowa opcja konfiguracyjna `CACHE_MAX_ENTRIES` (domyslnie 1000). Dodano `Stop()` do cleanup goroutine.
 
-**Fix:** Dodac max entries (np. LRU) lub periodic eviction (goroutine z timerem).
+### 5. ~~ReadDoc — niespójna logika cache~~ FIXED
 
-### 5. ReadDoc — niespójna logika cache
+**Plik:** `internal/handlers/handlers.go`
 
-**Plik:** `internal/handlers/handlers.go:193-199`
-
-```go
-if v, ok := h.cache.Get(cacheKey); ok {
-    cached := v.(string)
-    if len(cached) <= maxLength {
-        return text(cached)
-    }
-}
-```
-
-Jesli cached string jest dluzszy niz `maxLength`, cache hit jest ignorowany, ale zawartosc jest czytana od nowa bez zapisu do cache z innym kluczem. Powoduje powtarzalne chybienia.
+Klucz cache teraz zawiera `maxLength` (`doc_content_<path>_<maxLength>`), wiec rozne wartosci `maxLength` sa cachowane niezaleznie. Usuniety warunek `originalLen <= MaxDocumentLength` — przetworzona tresc jest zawsze cachowana.
 
 ### 6. ~~Server start error nie jest propagowany~~ FIXED
 
@@ -91,15 +80,11 @@ Jesli cached string jest dluzszy niz `maxLength`, cache hit jest ignorowany, ale
 
 Dodano kanal `errCh` — jesli `srv.Start()` zwroci error natychmiast, program loguje i wychodzi z kodem 1 zamiast wisiec na `<-quit`.
 
-### 7. Hardcoded wersja serwera
+### 7. ~~Hardcoded wersja serwera~~ FIXED
 
-**Plik:** `internal/server/server.go:116`
+**Plik:** `cmd/server/main.go`, `internal/server/server.go`, `Makefile`
 
-```go
-"version": "1.0.0",
-```
-
-Wersja jest na sztywno. Powinna byc brana z tagu git / zmiennej buildowej (`-ldflags "-X main.version=..."`) i przekazywana przez config.
+Dodano zmienna `version` ustawiana przez `-ldflags "-X main.version=..."`. Makefile automatycznie odczytuje wersje z `git describe --tags --always --dirty`. Wersja przekazywana przez `config.Version` do MCP `serverInfo`.
 
 ---
 
@@ -111,11 +96,11 @@ Wersja jest na sztywno. Powinna byc brana z tagu git / zmiennej buildowej (`-ldf
 
 Zamieniono wszystkie `os.Unsetenv()` na `t.Setenv("VAR", "")` — cleanup automatyczny po tescie.
 
-### 9. Brak context propagation w handlerach
+### 9. ~~Brak context propagation w handlerach~~ FIXED
 
 **Plik:** `internal/server/server.go`, `internal/handlers/handlers.go`
 
-Zaden handler nie przekazuje `r.Context()` w dol. Jesli klient zamknie polaczenie, serwer dalej przetwarza request (czyta pliki, odpytuje indeks).
+Dodano `context.Context` do `CallTool()`, `SmartQuery()`, `SearchDocs()`, `ReadDoc()`, `ListDocs()`, `GetSection()`, `GetNavigation()`. Server przekazuje `r.Context()` do handlerow. Handlery sprawdzaja `ctx.Err()` przed operacjami I/O — jesli klient zamknie polaczenie, przetwarzanie jest przerywane.
 
 ### 10. ~~tokenize() alokuje stop words map przy kazdym wywolaniu~~ FIXED
 
@@ -141,15 +126,11 @@ Usunieto nieuzywane pole `SHA` z `DocumentInfo`.
 
 Zmieniono na `Username: "x-access-token"`, `Password: token` — dziala zarowno dla PAT jak i GitHub App installation tokens.
 
-### 14. API key porownywanie — timing side-channel
+### 14. ~~API key porownywanie — timing side-channel~~ FIXED
 
-**Plik:** `internal/server/middleware.go:26`
+**Plik:** `internal/server/middleware.go`
 
-```go
-if keySet[token] {
-```
-
-Map lookup nie jest constant-time. Niski risk przy API keys, ale `subtle.ConstantTimeCompare` byloby poprawniejsze.
+Zamieniono map lookup na iteracje po slice z `subtle.ConstantTimeCompare()`. Porownanie jest constant-time, eliminuje timing side-channel.
 
 ### 15. ~~Markdown table separator detection~~ FIXED
 
@@ -178,17 +159,17 @@ Zamieniono custom `min8()` na builtin `min(8, len(s))` i usunieto funkcje.
 | ~~P1~~ | ~~1~~ | ~~Race condition webhook vs syncer~~ | FIXED |
 | ~~P1~~ | ~~2~~ | ~~Brak limitu na webhook body~~ | FIXED |
 | ~~P1~~ | ~~3~~ | ~~Chunki indeksowane ale nieuzywane~~ | FIXED |
-| P2 | 4 | Cache bez limitu / eviction | Sredni |
-| P2 | 5 | ReadDoc niespojny cache | Maly |
+| ~~P2~~ | ~~4~~ | ~~Cache bez limitu / eviction~~ | FIXED |
+| ~~P2~~ | ~~5~~ | ~~ReadDoc niespojny cache~~ | FIXED |
 | ~~P2~~ | ~~6~~ | ~~Server start error nie propagowany~~ | FIXED |
-| P2 | 7 | Hardcoded wersja serwera | Maly |
+| ~~P2~~ | ~~7~~ | ~~Hardcoded wersja serwera~~ | FIXED |
 | ~~P3~~ | ~~8~~ | ~~config_test.go os.Unsetenv~~ | FIXED |
-| P3 | 9 | Brak context propagation | OTWARTE |
+| ~~P3~~ | ~~9~~ | ~~Brak context propagation~~ | FIXED |
 | ~~P3~~ | ~~10~~ | ~~tokenize() stop words alokacja~~ | FIXED |
 | ~~P3~~ | ~~11~~ | ~~Brak IdleTimeout~~ | FIXED |
 | ~~P3~~ | ~~12~~ | ~~Nieuzywane pole SHA~~ | FIXED |
 | ~~P3~~ | ~~13~~ | ~~BasicAuth username convention~~ | FIXED |
-| P3 | 14 | API key timing side-channel | Maly |
+| ~~P3~~ | ~~14~~ | ~~API key timing side-channel~~ | FIXED |
 | ~~P3~~ | ~~15~~ | ~~Markdown table separator~~ | FIXED |
 | ~~P3~~ | ~~16~~ | ~~ChunkDocument pos off-by-error~~ | FIXED |
 | ~~P3~~ | ~~17~~ | ~~min8() zamiast builtin min~~ | FIXED |

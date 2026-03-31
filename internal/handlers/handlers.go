@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -118,7 +119,7 @@ func (h *Handler) ListTools() []Tool {
 }
 
 // SmartQuery routes a natural language query to the appropriate handler.
-func (h *Handler) SmartQuery(query string) []TextContent {
+func (h *Handler) SmartQuery(ctx context.Context, query string) []TextContent {
 	q := strings.ToLower(strings.TrimSpace(query))
 	if q == "" {
 		return text("Please provide a query. Examples:\n- 'list all docs'\n- 'show me database documentation'\n- 'read the README'\n- 'how to add S3 access'")
@@ -126,30 +127,33 @@ func (h *Handler) SmartQuery(query string) []TextContent {
 
 	switch {
 	case containsAny(q, "list", "show all", "what docs", "available docs"):
-		return h.ListDocs(true)
+		return h.ListDocs(ctx, true)
 	case containsAny(q, "navigation", "structure", "overview", "table of contents"):
-		return h.GetNavigation()
+		return h.GetNavigation(ctx)
 	case containsAny(q, "read", "show me", "get me", "display") &&
 		containsAny(q, "readme", "main", "overview"):
 		if strings.Contains(q, "readme") {
-			return h.ReadDoc("README.md", 0)
+			return h.ReadDoc(ctx, "README.md", 0)
 		}
-		return h.SearchDocs(query, 5)
+		return h.SearchDocs(ctx, query, 5)
 	default:
 		maxResults := 5
 		if len(strings.Fields(q)) > 3 {
 			maxResults = 10
 		}
-		return h.SearchDocs(query, maxResults)
+		return h.SearchDocs(ctx, query, maxResults)
 	}
 }
 
 // ListDocs returns a formatted list of all documentation files (capped at 200).
-func (h *Handler) ListDocs(includeSubdirs bool) []TextContent {
+func (h *Handler) ListDocs(ctx context.Context, includeSubdirs bool) []TextContent {
 	const maxList = 200
 	cacheKey := fmt.Sprintf("list_docs_%v", includeSubdirs)
 	if v, ok := h.cache.Get(cacheKey); ok {
 		return text(v.(string))
+	}
+	if err := ctx.Err(); err != nil {
+		return nil
 	}
 
 	docs, err := h.repo.ListDocs(includeSubdirs)
@@ -182,7 +186,7 @@ func (h *Handler) ListDocs(includeSubdirs bool) []TextContent {
 }
 
 // ReadDoc returns the content of a document, with smart truncation for large docs.
-func (h *Handler) ReadDoc(docPath string, maxLength int) []TextContent {
+func (h *Handler) ReadDoc(ctx context.Context, docPath string, maxLength int) []TextContent {
 	if docPath == "" {
 		return text("Error: doc_path parameter is required")
 	}
@@ -190,12 +194,12 @@ func (h *Handler) ReadDoc(docPath string, maxLength int) []TextContent {
 		maxLength = h.cfg.MaxDocumentLength
 	}
 
-	cacheKey := "doc_content_" + docPath
+	cacheKey := fmt.Sprintf("doc_content_%s_%d", docPath, maxLength)
 	if v, ok := h.cache.Get(cacheKey); ok {
-		cached := v.(string)
-		if len(cached) <= maxLength {
-			return text(cached)
-		}
+		return text(v.(string))
+	}
+	if err := ctx.Err(); err != nil {
+		return nil
 	}
 
 	content, err := h.repo.GetDocContent(docPath)
@@ -217,9 +221,7 @@ func (h *Handler) ReadDoc(docPath string, maxLength int) []TextContent {
 		content = fmt.Sprintf("[View on GitHub](%s)\n\n%s", link, content)
 	}
 
-	if originalLen <= h.cfg.MaxDocumentLength {
-		h.cache.Set(cacheKey, content)
-	}
+	h.cache.Set(cacheKey, content)
 	return text(content)
 }
 
@@ -287,7 +289,7 @@ func simpleTruncate(content string, maxLength, originalLen int) string {
 }
 
 // SearchDocs searches the index and returns formatted results.
-func (h *Handler) SearchDocs(query string, maxResults int) []TextContent {
+func (h *Handler) SearchDocs(ctx context.Context, query string, maxResults int) []TextContent {
 	if query == "" {
 		return text("Error: query parameter is required")
 	}
@@ -295,6 +297,9 @@ func (h *Handler) SearchDocs(query string, maxResults int) []TextContent {
 	cacheKey := fmt.Sprintf("search_%s_%d", query, maxResults)
 	if v, ok := h.cache.Get(cacheKey); ok {
 		return text(v.(string))
+	}
+	if err := ctx.Err(); err != nil {
+		return nil
 	}
 
 	results := h.searcher.Search(query, maxResults,
@@ -320,12 +325,15 @@ func (h *Handler) SearchDocs(query string, maxResults int) []TextContent {
 }
 
 // GetSection returns a specific section of a document identified by heading text.
-func (h *Handler) GetSection(docPath, heading string) []TextContent {
+func (h *Handler) GetSection(ctx context.Context, docPath, heading string) []TextContent {
 	if docPath == "" {
 		return text("Error: path parameter is required")
 	}
 	if heading == "" {
 		return text("Error: heading parameter is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil
 	}
 
 	content, err := h.repo.GetDocContent(docPath)
@@ -358,10 +366,13 @@ func (h *Handler) GetSection(docPath, heading string) []TextContent {
 }
 
 // GetNavigation extracts and returns navigation from README.md.
-func (h *Handler) GetNavigation() []TextContent {
+func (h *Handler) GetNavigation(ctx context.Context) []TextContent {
 	const cacheKey = "navigation"
 	if v, ok := h.cache.Get(cacheKey); ok {
 		return text(v.(string))
+	}
+	if err := ctx.Err(); err != nil {
+		return nil
 	}
 
 	readme, err := h.repo.GetDocContent("README.md")
@@ -432,11 +443,11 @@ func (h *Handler) SyncRepo() error {
 }
 
 // CallTool dispatches a tool call by name.
-func (h *Handler) CallTool(name string, args map[string]any) ([]TextContent, error) {
+func (h *Handler) CallTool(ctx context.Context, name string, args map[string]any) ([]TextContent, error) {
 	switch name {
 	case "query_infrastructure_docs":
 		query, _ := args["query"].(string)
-		return h.SmartQuery(query), nil
+		return h.SmartQuery(ctx, query), nil
 	case "search_docs":
 		query, _ := args["query"].(string)
 		maxResults := 5
@@ -446,16 +457,16 @@ func (h *Handler) CallTool(name string, args map[string]any) ([]TextContent, err
 				maxResults = 20
 			}
 		}
-		return h.SearchDocs(query, maxResults), nil
+		return h.SearchDocs(ctx, query, maxResults), nil
 	case "get_document":
 		path, _ := args["path"].(string)
-		return h.ReadDoc(path, 0), nil
+		return h.ReadDoc(ctx, path, 0), nil
 	case "get_section":
 		path, _ := args["path"].(string)
 		heading, _ := args["heading"].(string)
-		return h.GetSection(path, heading), nil
+		return h.GetSection(ctx, path, heading), nil
 	case "list_docs":
-		return h.ListDocs(true), nil
+		return h.ListDocs(ctx, true), nil
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", name)
 	}

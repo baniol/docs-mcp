@@ -31,6 +31,7 @@ func testServer() *Server {
 		GithubRepo:             "test/repo",
 		GithubBranch:           "master",
 		DocsPath:               "docs",
+		Version:                "test",
 		IncludeGithubLinks:     false,
 		SnippetSize:            200,
 		SnippetsPerResult:      2,
@@ -39,7 +40,7 @@ func testServer() *Server {
 		Port:                   8099,
 		WebhookSecret:          "secret",
 	}
-	h := handlers.New(cfg, nil, &mockSearcher{}, utils.NewCache(time.Minute))
+	h := handlers.New(cfg, nil, &mockSearcher{}, utils.NewCache(time.Minute, 1000))
 	return New(cfg, h)
 }
 
@@ -112,7 +113,7 @@ func TestAPIKeyMiddleware_Missing(t *testing.T) {
 		APIKeys:    []string{"secret-key"},
 		Port:       8099,
 	}
-	h := handlers.New(cfg, nil, &mockSearcher{}, utils.NewCache(time.Minute))
+	h := handlers.New(cfg, nil, &mockSearcher{}, utils.NewCache(time.Minute, 1000))
 	s := New(cfg, h)
 
 	r := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{}`))
@@ -133,7 +134,7 @@ func TestAPIKeyMiddleware_Valid(t *testing.T) {
 		MaxDocumentLength:      8000,
 		LargeDocumentThreshold: 10000,
 	}
-	h := handlers.New(cfg, nil, &mockSearcher{}, utils.NewCache(time.Minute))
+	h := handlers.New(cfg, nil, &mockSearcher{}, utils.NewCache(time.Minute, 1000))
 	s := New(cfg, h)
 
 	r := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))

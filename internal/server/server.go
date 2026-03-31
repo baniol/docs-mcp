@@ -87,7 +87,7 @@ func (s *Server) queryHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
-	content := s.handler.SmartQuery(body.Query)
+	content := s.handler.SmartQuery(r.Context(), body.Query)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"query":   body.Query,
 		"content": content,
@@ -115,7 +115,7 @@ func (s *Server) mcpHandler(w http.ResponseWriter, r *http.Request) {
 			},
 			"serverInfo": map[string]any{
 				"name":    "docs-mcp",
-				"version": "1.0.0",
+				"version": s.cfg.Version,
 			},
 		}))
 
@@ -129,7 +129,7 @@ func (s *Server) mcpHandler(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, errResponse(req.ID, -32602, "invalid params"))
 			return
 		}
-		content, err := s.handler.CallTool(params.Name, params.Arguments)
+		content, err := s.handler.CallTool(r.Context(), params.Name, params.Arguments)
 		if err != nil {
 			writeJSON(w, http.StatusOK, errResponse(req.ID, -32601, err.Error()))
 			return

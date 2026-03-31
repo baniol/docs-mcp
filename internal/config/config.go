@@ -18,9 +18,11 @@ type Config struct {
 	WebhookSecret string
 
 	// Server
-	CacheTTL int
-	LogLevel string
-	Port     int
+	Version         string
+	CacheTTL        int
+	CacheMaxEntries int
+	LogLevel        string
+	Port            int
 
 	// Repo
 	RepoPath     string
@@ -49,6 +51,7 @@ func Load() (*Config, error) {
 		GithubBranch:           env("GITHUB_BRANCH", "main"),
 		WebhookSecret:          env("GITHUB_WEBHOOK_SECRET", ""),
 		CacheTTL:               envInt("CACHE_TTL", 300),
+		CacheMaxEntries:        envInt("CACHE_MAX_ENTRIES", 1000),
 		LogLevel:               env("LOG_LEVEL", "INFO"),
 		Port:                   envInt("PORT", 8000),
 		RepoPath:               env("REPO_PATH", "/tmp/docs-mcp-repo"),

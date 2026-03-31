@@ -3,8 +3,10 @@
         bump-patch bump-minor bump-major \
         t ca
 
-BINARY := bin/docs-mcp
+BINARY  := bin/docs-mcp
 MODULE  := github.com/baniol/docs-mcp
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS := -X main.version=$(VERSION)
 
 # Default target
 help: ## Show this help message
@@ -15,7 +17,7 @@ help: ## Show this help message
 
 build: ## Build binary to ./bin/docs-mcp
 	@mkdir -p bin
-	go build -o $(BINARY) ./cmd/server
+	go build -ldflags "$(LDFLAGS)" -o $(BINARY) ./cmd/server
 
 run: build ## Build and run locally (requires .env or exported vars)
 	./$(BINARY)

@@ -1,30 +1,33 @@
 package server
 
 import (
+	"crypto/subtle"
 	"net/http"
 )
 
 // apiKeyMiddleware checks Bearer token against allowed keys.
 // If no keys are configured, all requests are allowed.
 func apiKeyMiddleware(keys []string) func(http.Handler) http.Handler {
-	keySet := make(map[string]bool, len(keys))
+	var validKeys []string
 	for _, k := range keys {
 		if k != "" {
-			keySet[k] = true
+			validKeys = append(validKeys, k)
 		}
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if len(keySet) == 0 {
+			if len(validKeys) == 0 {
 				next.ServeHTTP(w, r)
 				return
 			}
 			auth := r.Header.Get("Authorization")
 			if len(auth) > 7 && auth[:7] == "Bearer " {
 				token := auth[7:]
-				if keySet[token] {
-					next.ServeHTTP(w, r)
-					return
+				for _, key := range validKeys {
+					if subtle.ConstantTimeCompare([]byte(token), []byte(key)) == 1 {
+						next.ServeHTTP(w, r)
+						return
+					}
 				}
 			}
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)

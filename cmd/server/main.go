@@ -18,6 +18,9 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// version is set at build time via -ldflags "-X main.version=..."
+var version = "dev"
+
 func main() {
 	// Load .env file if present (silently ignored if missing)
 	if err := godotenv.Load(); err == nil {
@@ -30,6 +33,8 @@ func main() {
 		slog.Error("config error", "err", err)
 		os.Exit(1)
 	}
+
+	cfg.Version = version
 
 	// Configure structured logging
 	level := slog.LevelInfo
@@ -59,7 +64,7 @@ func main() {
 
 	// Build BM25 search index
 	searcher := search.NewBM25Index()
-	cache := utils.NewCache(time.Duration(cfg.CacheTTL) * time.Second)
+	cache := utils.NewCache(time.Duration(cfg.CacheTTL)*time.Second, cfg.CacheMaxEntries)
 
 	handler := handlers.New(cfg, repoClient, searcher, cache)
 
@@ -100,6 +105,7 @@ func main() {
 		os.Exit(1)
 	}
 	slog.Info("shutdown signal received")
+	cache.Stop()
 	cancel()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
