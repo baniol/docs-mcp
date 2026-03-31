@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- YAML frontmatter tag support: documents with `tags: [...]` get +5.0 BM25 score boost per matching query term, enabling synonym and concept matching without polluting term frequency
+
+### Fixed
+- README: `GITHUB_BRANCH` default corrected from `master` to `main`
+- README: added missing `CACHE_MAX_ENTRIES` config var, removed non-existent `MAX_SNIPPET_SIZE`
+
 ## [v0.1.0] - 2026-03-18
 
 ### Added
