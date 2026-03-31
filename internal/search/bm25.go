@@ -16,27 +16,22 @@ type docEntry struct {
 	path     string
 	name     string
 	content  string
-	chunks   []Chunk
 	termFreq map[string]int
 	length   int
 }
 
 // BM25Index implements the Searcher interface using BM25 ranking.
 type BM25Index struct {
-	mu           sync.RWMutex
-	docs         map[string]*docEntry
-	df           map[string]int // document frequency per term
-	avgDocLen    float64
-	chunkSize    int
-	chunkOverlap int
+	mu        sync.RWMutex
+	docs      map[string]*docEntry
+	df        map[string]int // document frequency per term
+	avgDocLen float64
 }
 
-func NewBM25Index(chunkSize, chunkOverlap int) *BM25Index {
+func NewBM25Index() *BM25Index {
 	return &BM25Index{
-		docs:         make(map[string]*docEntry),
-		df:           make(map[string]int),
-		chunkSize:    chunkSize,
-		chunkOverlap: chunkOverlap,
+		docs: make(map[string]*docEntry),
+		df:   make(map[string]int),
 	}
 }
 
@@ -67,7 +62,6 @@ func (b *BM25Index) indexLocked(path, name, content string) {
 		path:     path,
 		name:     name,
 		content:  content,
-		chunks:   ChunkDocument(content, b.chunkSize, b.chunkOverlap),
 		termFreq: tf,
 		length:   len(tokens),
 	}
@@ -176,15 +170,15 @@ func (b *BM25Index) Rebuild(docs []IndexDoc) {
 	}
 }
 
+var stopWords = map[string]bool{
+	"the": true, "a": true, "an": true, "and": true, "or": true,
+	"but": true, "in": true, "on": true, "at": true, "to": true,
+	"for": true, "of": true, "with": true, "by": true, "is": true,
+	"it": true, "be": true, "as": true, "are": true, "was": true,
+}
+
 // tokenize lowercases and splits text into words, removing stop words.
 func tokenize(text string) []string {
-	stopWords := map[string]bool{
-		"the": true, "a": true, "an": true, "and": true, "or": true,
-		"but": true, "in": true, "on": true, "at": true, "to": true,
-		"for": true, "of": true, "with": true, "by": true, "is": true,
-		"it": true, "be": true, "as": true, "are": true, "was": true,
-	}
-
 	lower := strings.ToLower(text)
 	fields := strings.FieldsFunc(lower, func(r rune) bool {
 		return !('a' <= r && r <= 'z') && !('0' <= r && r <= '9') && r != '-' && r != '_'

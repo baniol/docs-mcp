@@ -1,15 +1,14 @@
 package config
 
 import (
-	"os"
 	"testing"
 )
 
 func TestLoad_MissingToken_DefaultRepo(t *testing.T) {
 	// Empty token should work for default public repo
-	os.Unsetenv("GITHUB_TOKEN")
-	os.Unsetenv("GITHUB_REPO")
-	os.Unsetenv("DOCS_PATH")
+	t.Setenv("GITHUB_TOKEN", "")
+	t.Setenv("GITHUB_REPO", "")
+	t.Setenv("DOCS_PATH", "")
 	c, err := Load()
 	if err != nil {
 		t.Fatalf("unexpected error with default repo: %v", err)
@@ -21,9 +20,9 @@ func TestLoad_MissingToken_DefaultRepo(t *testing.T) {
 
 func TestLoad_MissingToken_CustomRepo(t *testing.T) {
 	// Token is optional for any repo — auth errors surface at clone/pull time
-	os.Unsetenv("GITHUB_TOKEN")
+	t.Setenv("GITHUB_TOKEN", "")
 	t.Setenv("GITHUB_REPO", "owner/some-public-repo")
-	os.Unsetenv("DOCS_PATH")
+	t.Setenv("DOCS_PATH", "")
 	_, err := Load()
 	if err != nil {
 		t.Fatalf("unexpected error when GITHUB_TOKEN is missing: %v", err)
@@ -39,8 +38,8 @@ func setRequiredEnvs(t *testing.T) {
 
 func TestLoad_DefaultRepoAndDocsPath(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "test-token")
-	os.Unsetenv("GITHUB_REPO")
-	os.Unsetenv("DOCS_PATH")
+	t.Setenv("GITHUB_REPO", "")
+	t.Setenv("DOCS_PATH", "")
 	c, err := Load()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

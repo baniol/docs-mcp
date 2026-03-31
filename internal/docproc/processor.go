@@ -26,6 +26,7 @@ type Navigation struct {
 }
 
 var mdLinkRe = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
+var tableSepRe = regexp.MustCompile(`^\|[\s:]*-+[\s:|-]*\|$`)
 
 // ExtractNavigationFromReadme parses a README.md for navigation structure.
 func ExtractNavigationFromReadme(content string) Navigation {
@@ -48,7 +49,7 @@ func ExtractNavigationFromReadme(content string) Navigation {
 				break
 			}
 			// Table row
-			if strings.Contains(line, "|") && !strings.HasPrefix(line, "|--") {
+			if strings.Contains(line, "|") && !tableSepRe.MatchString(line) {
 				parts := splitPipe(line)
 				if len(parts) >= 2 {
 					entry := NavigationFile{Name: parts[0], Description: parts[1]}

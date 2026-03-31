@@ -5,7 +5,7 @@ import (
 )
 
 func TestBM25_BasicSearch(t *testing.T) {
-	idx := NewBM25Index(800, 100)
+	idx := NewBM25Index()
 	idx.Index("doc1.md", "Kubernetes Guide", "Kubernetes is an orchestration tool for containers. Pods are the basic unit.")
 	idx.Index("doc2.md", "Database Guide", "PostgreSQL is a relational database. It supports ACID transactions.")
 	idx.Index("doc3.md", "Networking", "VPN configuration and firewall rules for the infrastructure.")
@@ -20,7 +20,7 @@ func TestBM25_BasicSearch(t *testing.T) {
 }
 
 func TestBM25_Ranking(t *testing.T) {
-	idx := NewBM25Index(800, 100)
+	idx := NewBM25Index()
 	// doc1 has more occurrences of "database"
 	idx.Index("doc1.md", "Database Deep Dive", "database database database PostgreSQL database configuration database")
 	idx.Index("doc2.md", "Quick Intro", "This mentions database once")
@@ -36,7 +36,7 @@ func TestBM25_Ranking(t *testing.T) {
 }
 
 func TestBM25_NoResults(t *testing.T) {
-	idx := NewBM25Index(800, 100)
+	idx := NewBM25Index()
 	idx.Index("doc1.md", "Guide", "Some content about infrastructure")
 
 	results := idx.Search("zzzyyyxxx", 5, 200, 1)
@@ -46,7 +46,7 @@ func TestBM25_NoResults(t *testing.T) {
 }
 
 func TestBM25_Rebuild(t *testing.T) {
-	idx := NewBM25Index(800, 100)
+	idx := NewBM25Index()
 	idx.Index("old.md", "Old", "old content")
 
 	idx.Rebuild([]IndexDoc{

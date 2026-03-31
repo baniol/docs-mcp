@@ -58,7 +58,7 @@ func main() {
 	}
 
 	// Build BM25 search index
-	searcher := search.NewBM25Index(cfg.ChunkSize, cfg.ChunkOverlap)
+	searcher := search.NewBM25Index()
 	cache := utils.NewCache(time.Duration(cfg.CacheTTL) * time.Second)
 
 	handler := handlers.New(cfg, repoClient, searcher, cache)
@@ -90,13 +90,15 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
-	go func() {
-		if err := srv.Start(); err != nil {
-			slog.Error("server error", "err", err)
-		}
-	}()
+	errCh := make(chan error, 1)
+	go func() { errCh <- srv.Start() }()
 
-	<-quit
+	select {
+	case <-quit:
+	case err := <-errCh:
+		slog.Error("server failed", "err", err)
+		os.Exit(1)
+	}
 	slog.Info("shutdown signal received")
 	cancel()
 

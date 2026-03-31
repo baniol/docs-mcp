@@ -33,6 +33,7 @@ func New(cfg *config.Config, h *handlers.Handler) *Server {
 		Handler:      s.routes(),
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 60 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
 	return s
 }

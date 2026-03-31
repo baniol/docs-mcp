@@ -52,17 +52,11 @@ Dodano `sync.Mutex` do `repo.Client`, lockowany w `Sync()`. Serializuje rownocze
 
 Dodano `http.MaxBytesReader(w, r.Body, 1<<20)` (1 MB limit). Przekroczenie zwraca 413.
 
-### 3. Chunki indeksowane ale nieuzywane w wyszukiwaniu
+### 3. ~~Chunki indeksowane ale nieuzywane w wyszukiwaniu~~ FIXED
 
-**Plik:** `internal/search/bm25.go:70`
+**Plik:** `internal/search/bm25.go`
 
-```go
-chunks: ChunkDocument(content, b.chunkSize, b.chunkOverlap),
-```
-
-Chunki sa tworzone i przechowywane w kazdym `docEntry`, ale scoring operuje na pelnodokumentowym `termFreq` (z calego `content`). Chunki nigdzie nie sa czytane po zapisaniu. To niepotrzebna alokacja pamieci — kazdy dokument trzyma zduplikowana tresc (raz jako `content`, raz jako chunki).
-
-**Fix:** Albo usunac chunking z indeksu (jesli BM25 ma dzialac na poziomie dokumentu), albo zaimplementowac chunk-level scoring (lepsze wyniki dla duzych dokumentow — snippet extraction moze tez korzystac z chunkow).
+Usunieto pole `chunks` z `docEntry` oraz wywolanie `ChunkDocument()` z indeksowania. Usunieto `chunkSize`/`chunkOverlap` z `BM25Index` i uproszczono `NewBM25Index()`. Chunker (`chunker.go`) zachowany na przyszlosc.
 
 ---
 
@@ -91,31 +85,11 @@ if v, ok := h.cache.Get(cacheKey); ok {
 
 Jesli cached string jest dluzszy niz `maxLength`, cache hit jest ignorowany, ale zawartosc jest czytana od nowa bez zapisu do cache z innym kluczem. Powoduje powtarzalne chybienia.
 
-### 6. Server start error nie jest propagowany
+### 6. ~~Server start error nie jest propagowany~~ FIXED
 
-**Plik:** `cmd/server/main.go:93-97`
+**Plik:** `cmd/server/main.go`
 
-```go
-go func() {
-    if err := srv.Start(); err != nil {
-        slog.Error("server error", "err", err)
-    }
-}()
-```
-
-Jesli `ListenAndServe` zwroci error natychmiast (port zajety), program loguje blad ale wisi czekajac na signal (linia 99: `<-quit`). Powinien wyjsc z kodem 1.
-
-**Fix:** Uzyc kanalu error:
-```go
-errCh := make(chan error, 1)
-go func() { errCh <- srv.Start() }()
-select {
-case <-quit: // graceful shutdown
-case err := <-errCh: // startup failure
-    slog.Error("server failed", "err", err)
-    os.Exit(1)
-}
-```
+Dodano kanal `errCh` — jesli `srv.Start()` zwroci error natychmiast, program loguje i wychodzi z kodem 1 zamiast wisiec na `<-quit`.
 
 ### 7. Hardcoded wersja serwera
 
@@ -131,13 +105,11 @@ Wersja jest na sztywno. Powinna byc brana z tagu git / zmiennej buildowej (`-ldf
 
 ## P3 — Drobne
 
-### 8. config_test.go — os.Unsetenv bez cleanup
+### 8. ~~config_test.go — os.Unsetenv bez cleanup~~ FIXED
 
-**Plik:** `internal/config/config_test.go:10-12, 24`
+**Plik:** `internal/config/config_test.go`
 
-`TestLoad_MissingToken_DefaultRepo` uzywa `os.Unsetenv()` bezposrednio — nie `t.Setenv()`. Te zmiany nie sa cofane po tescie, co moze wplynac na inne testy przy rownoczesnym uruchamianiu.
-
-**Fix:** Zamienic na `t.Setenv("GITHUB_TOKEN", "")` + `t.Setenv("GITHUB_REPO", "")` itd. (lub dedykowany helper).
+Zamieniono wszystkie `os.Unsetenv()` na `t.Setenv("VAR", "")` — cleanup automatyczny po tescie.
 
 ### 9. Brak context propagation w handlerach
 
@@ -145,41 +117,29 @@ Wersja jest na sztywno. Powinna byc brana z tagu git / zmiennej buildowej (`-ldf
 
 Zaden handler nie przekazuje `r.Context()` w dol. Jesli klient zamknie polaczenie, serwer dalej przetwarza request (czyta pliki, odpytuje indeks).
 
-### 10. tokenize() alokuje stop words map przy kazdym wywolaniu
+### 10. ~~tokenize() alokuje stop words map przy kazdym wywolaniu~~ FIXED
 
-**Plik:** `internal/search/bm25.go:181`
+**Plik:** `internal/search/bm25.go`
 
-```go
-func tokenize(text string) []string {
-    stopWords := map[string]bool{...}
-```
+Przeniesiono `stopWords` na package-level `var`.
 
-Mapa stop words jest tworzona od nowa przy kazdym wywolaniu `tokenize()` — a ta funkcja jest wolana dla kazdego dokumentu przy indeksowaniu i dla kazdego query przy wyszukiwaniu. Powinna byc package-level `var`.
+### 11. ~~Brak IdleTimeout na HTTP server~~ FIXED
 
-### 11. Brak IdleTimeout na HTTP server
+**Plik:** `internal/server/server.go`
 
-**Plik:** `internal/server/server.go:31-36`
+Dodano `IdleTimeout: 120 * time.Second`.
 
-`ReadTimeout` i `WriteTimeout` sa ustawione, ale brakuje `IdleTimeout`. Przy keep-alive connections idle polaczenia moga akumulowac sie.
+### 12. ~~Nieuzywane pole SHA w DocumentInfo~~ FIXED
 
-### 12. Nieuzywane pole SHA w DocumentInfo
+**Plik:** `internal/repo/types.go`
 
-**Plik:** `internal/repo/types.go:8`
+Usunieto nieuzywane pole `SHA` z `DocumentInfo`.
 
-`DocumentInfo` ma pole `SHA` ale nigdzie nie jest wypelniane w `ListDocs`. Albo uzywac, albo usunac.
+### 13. ~~BasicAuth — username convention~~ FIXED
 
-### 13. BasicAuth — username convention
+**Plik:** `internal/repo/client.go`
 
-**Plik:** `internal/repo/client.go:38-41`
-
-```go
-auth = &gogithttp.BasicAuth{
-    Username: c.cfg.GithubToken,
-    Password: "",
-}
-```
-
-Standardowa konwencja GitHub API to `Username: "x-access-token"`, `Password: token`. Obecna forma dziala dla PAT-ow, ale nie dla GitHub App installation tokens.
+Zmieniono na `Username: "x-access-token"`, `Password: token` — dziala zarowno dla PAT jak i GitHub App installation tokens.
 
 ### 14. API key porownywanie — timing side-channel
 
@@ -191,31 +151,23 @@ if keySet[token] {
 
 Map lookup nie jest constant-time. Niski risk przy API keys, ale `subtle.ConstantTimeCompare` byloby poprawniejsze.
 
-### 15. Markdown table separator detection
+### 15. ~~Markdown table separator detection~~ FIXED
 
-**Plik:** `internal/docproc/processor.go:51`
+**Plik:** `internal/docproc/processor.go`
 
-```go
-!strings.HasPrefix(line, "|--")
-```
+Zamieniono `strings.HasPrefix(line, "|--")` na regex `^\|[\s:]*-+[\s:|-]*\|$` — lapie `| --- | --- |`, `|:---|:---|` itd.
 
-Nie lapie typowych separatorow `| --- | --- |` ani `|:---|:---|`. Moze blednie traktowac separator jako dane.
+### 16. ~~ChunkDocument — pos tracking off-by-error~~ FIXED
 
-### 16. ChunkDocument — pos tracking off-by-error
+**Plik:** `internal/search/chunker.go`
 
-**Plik:** `internal/search/chunker.go:53`
+Dodano warunek `if i < len(paragraphs)-1` przed dodaniem +2 — ostatni paragraf nie dodaje separatora.
 
-```go
-pos += paraLen + 2 // +2 for "\n\n"
-```
+### 17. ~~min8() zamiast builtin min~~ FIXED
 
-Przy ostatnim paragrafie (brak trailing `\n\n`) `pos` liczy dodatkowe 2 znaki. Chunk `End` moze przekraczac dlugosc content.
+**Plik:** `internal/syncer/syncer.go`
 
-### 17. min8() zamiast builtin min
-
-**Plik:** `internal/syncer/syncer.go:71-76`
-
-Custom `min8()` moze byc zastapione przez `min(8, len(s))` z Go 1.21+ builtin.
+Zamieniono custom `min8()` na builtin `min(8, len(s))` i usunieto funkcje.
 
 ---
 
@@ -225,9 +177,18 @@ Custom `min8()` moze byc zastapione przez `min(8, len(s))` z Go 1.21+ builtin.
 |------|---|---------|--------|
 | ~~P1~~ | ~~1~~ | ~~Race condition webhook vs syncer~~ | FIXED |
 | ~~P1~~ | ~~2~~ | ~~Brak limitu na webhook body~~ | FIXED |
-| P1 | 3 | Chunki indeksowane ale nieuzywane | Sredni |
+| ~~P1~~ | ~~3~~ | ~~Chunki indeksowane ale nieuzywane~~ | FIXED |
 | P2 | 4 | Cache bez limitu / eviction | Sredni |
 | P2 | 5 | ReadDoc niespojny cache | Maly |
-| P2 | 6 | Server start error nie propagowany | Maly |
+| ~~P2~~ | ~~6~~ | ~~Server start error nie propagowany~~ | FIXED |
 | P2 | 7 | Hardcoded wersja serwera | Maly |
-| P3 | 8-17 | Drobne | Maly |
+| ~~P3~~ | ~~8~~ | ~~config_test.go os.Unsetenv~~ | FIXED |
+| P3 | 9 | Brak context propagation | OTWARTE |
+| ~~P3~~ | ~~10~~ | ~~tokenize() stop words alokacja~~ | FIXED |
+| ~~P3~~ | ~~11~~ | ~~Brak IdleTimeout~~ | FIXED |
+| ~~P3~~ | ~~12~~ | ~~Nieuzywane pole SHA~~ | FIXED |
+| ~~P3~~ | ~~13~~ | ~~BasicAuth username convention~~ | FIXED |
+| P3 | 14 | API key timing side-channel | Maly |
+| ~~P3~~ | ~~15~~ | ~~Markdown table separator~~ | FIXED |
+| ~~P3~~ | ~~16~~ | ~~ChunkDocument pos off-by-error~~ | FIXED |
+| ~~P3~~ | ~~17~~ | ~~min8() zamiast builtin min~~ | FIXED |

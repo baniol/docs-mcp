@@ -38,8 +38,8 @@ func (c *Client) Initialize() error {
 	var auth *gogithttp.BasicAuth
 	if c.cfg.GithubToken != "" {
 		auth = &gogithttp.BasicAuth{
-			Username: c.cfg.GithubToken,
-			Password: "",
+			Username: "x-access-token",
+			Password: c.cfg.GithubToken,
 		}
 	}
 
@@ -173,8 +173,8 @@ func (c *Client) Sync() (bool, error) {
 	var auth *gogithttp.BasicAuth
 	if c.cfg.GithubToken != "" {
 		auth = &gogithttp.BasicAuth{
-			Username: c.cfg.GithubToken,
-			Password: "",
+			Username: "x-access-token",
+			Password: c.cfg.GithubToken,
 		}
 	}
 

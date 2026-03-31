@@ -22,7 +22,7 @@ func ChunkDocument(content string, chunkSize, overlap int) []Chunk {
 	currentStart := 0
 	pos := 0
 
-	for _, para := range paragraphs {
+	for i, para := range paragraphs {
 		paraLen := len(para)
 
 		if current != "" && len(current)+paraLen+2 > chunkSize {
@@ -50,7 +50,10 @@ func ChunkDocument(content string, chunkSize, overlap int) []Chunk {
 				current += "\n\n" + para
 			}
 		}
-		pos += paraLen + 2 // +2 for "\n\n"
+		pos += paraLen
+		if i < len(paragraphs)-1 {
+			pos += 2 // +2 for "\n\n" separator between paragraphs
+		}
 	}
 
 	if strings.TrimSpace(current) != "" {

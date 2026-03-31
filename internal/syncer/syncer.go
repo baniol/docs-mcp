@@ -44,7 +44,7 @@ func (s *RepoSyncer) Sync() bool {
 		return false
 	}
 	newHash := s.client.HeadHash()
-	slog.Info("repo updated", "old", s.lastHash[:min8(s.lastHash)], "new", newHash[:min8(newHash)])
+	slog.Info("repo updated", "old", s.lastHash[:min(8, len(s.lastHash))], "new", newHash[:min(8, len(newHash))])
 	s.lastHash = newHash
 	if s.onUpdate != nil {
 		s.onUpdate(newHash)
@@ -66,11 +66,4 @@ func (s *RepoSyncer) Start(ctx context.Context) {
 			s.Sync()
 		}
 	}
-}
-
-func min8(s string) int {
-	if len(s) < 8 {
-		return len(s)
-	}
-	return 8
 }
