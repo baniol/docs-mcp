@@ -7,9 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [v0.0.1] - 2026-03-31
+## [v0.1.0] - 2026-03-18
 
 ### Added
+- BM25 full-text search with configurable chunking and snippet extraction
+- Git-based doc sync with background polling and webhook trigger
+- MCP JSON-RPC 2.0 server: `search_docs`, `get_document`, `list_docs` tools
+- Bearer token auth via `API_KEYS` env var
+- GitHub webhook verification (`GITHUB_WEBHOOK_SECRET`)
+- `.env` file support via godotenv
+- Configurable chunk size, overlap, snippet size, and document limits
 - MIT license
 - GitHub Actions CI pipeline (format, vet, lint, test, build on Go 1.22/1.23)
 - Cache max entry limit with eviction of oldest entry (`CACHE_MAX_ENTRIES`, default 1000)
@@ -26,14 +33,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - API key comparison uses `subtle.ConstantTimeCompare` instead of map lookup (timing side-channel hardening)
 - `NewCache()` now requires a `maxEntries` parameter
-
-## [v0.1.0] - 2026-03-18
-
-### Added
-- BM25 full-text search with configurable chunking and snippet extraction
-- Git-based doc sync with background polling and webhook trigger
-- MCP JSON-RPC 2.0 server: `search_docs`, `get_document`, `list_docs` tools
-- Bearer token auth via `API_KEYS` env var
-- GitHub webhook verification (`GITHUB_WEBHOOK_SECRET`)
-- `.env` file support via godotenv
-- Configurable chunk size, overlap, snippet size, and document limits
