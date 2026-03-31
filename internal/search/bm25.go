@@ -16,6 +16,7 @@ type docEntry struct {
 	path     string
 	name     string
 	content  string
+	tags     []string
 	termFreq map[string]int
 	length   int
 }
@@ -35,13 +36,13 @@ func NewBM25Index() *BM25Index {
 	}
 }
 
-func (b *BM25Index) Index(path, name, content string) {
+func (b *BM25Index) Index(path, name, content string, tags ...string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.indexLocked(path, name, content)
+	b.indexLocked(path, name, content, tags)
 }
 
-func (b *BM25Index) indexLocked(path, name, content string) {
+func (b *BM25Index) indexLocked(path, name, content string, tags []string) {
 	// Remove old entry's df contributions
 	if old, ok := b.docs[path]; ok {
 		for term := range old.termFreq {
@@ -62,6 +63,7 @@ func (b *BM25Index) indexLocked(path, name, content string) {
 		path:     path,
 		name:     name,
 		content:  content,
+		tags:     tags,
 		termFreq: tf,
 		length:   len(tokens),
 	}
@@ -110,6 +112,15 @@ func (b *BM25Index) score(entry *docEntry, queryTerms []string) float64 {
 			score += 3.0
 		} else if strings.Contains(pathLower, term) {
 			score += 1.5
+		}
+	}
+	// Boost for tag matches
+	for _, tag := range entry.tags {
+		tagLower := strings.ToLower(tag)
+		for _, term := range queryTerms {
+			if tagLower == term || strings.Contains(tagLower, term) {
+				score += 5.0
+			}
 		}
 	}
 	return score
@@ -166,7 +177,7 @@ func (b *BM25Index) Rebuild(docs []IndexDoc) {
 	b.df = make(map[string]int)
 	b.avgDocLen = 0
 	for _, d := range docs {
-		b.indexLocked(d.Path, d.Name, d.Content)
+		b.indexLocked(d.Path, d.Name, d.Content, d.Tags)
 	}
 }
 

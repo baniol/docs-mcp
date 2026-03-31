@@ -429,6 +429,7 @@ func (h *Handler) BuildIndex() error {
 			Path:    d.Path,
 			Name:    d.Name,
 			Content: content,
+			Tags:    docproc.ExtractFrontmatterTags(content),
 		})
 	}
 	h.searcher.Rebuild(indexDocs)

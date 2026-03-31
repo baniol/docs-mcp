@@ -20,8 +20,8 @@ import (
 
 type mockSearcher struct{}
 
-func (m *mockSearcher) Index(path, name, content string) {}
-func (m *mockSearcher) Rebuild(docs []search.IndexDoc)   {}
+func (m *mockSearcher) Index(path, name, content string, tags ...string) {}
+func (m *mockSearcher) Rebuild(docs []search.IndexDoc)                   {}
 func (m *mockSearcher) Search(q string, max, ss, spr int) []search.SearchResult {
 	return []search.SearchResult{{Path: "doc.md", Name: "Doc", Score: 1.0, Snippets: []string{"snippet"}}}
 }

@@ -21,7 +21,7 @@ type mockSearcher struct {
 	rebuilt []search.IndexDoc
 }
 
-func (m *mockSearcher) Index(path, name, content string) {}
+func (m *mockSearcher) Index(path, name, content string, tags ...string) {}
 func (m *mockSearcher) Search(query string, maxResults, snippetSize, snippetsPerResult int) []search.SearchResult {
 	return m.results
 }

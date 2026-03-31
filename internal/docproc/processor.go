@@ -26,6 +26,37 @@ type Navigation struct {
 }
 
 var mdLinkRe = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
+var tagsRe = regexp.MustCompile(`^tags:\s*\[([^\]]*)\]`)
+
+// ExtractFrontmatterTags extracts tags from YAML frontmatter if present.
+// Returns nil if no frontmatter or no tags field found.
+func ExtractFrontmatterTags(content string) []string {
+	if !strings.HasPrefix(content, "---") {
+		return nil
+	}
+	end := strings.Index(content[3:], "\n---")
+	if end < 0 {
+		return nil
+	}
+	fm := content[3 : end+3]
+	for _, line := range strings.Split(fm, "\n") {
+		line = strings.TrimSpace(line)
+		m := tagsRe.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		var tags []string
+		for _, t := range strings.Split(m[1], ",") {
+			t = strings.Trim(strings.TrimSpace(t), `"'`)
+			if t != "" {
+				tags = append(tags, t)
+			}
+		}
+		return tags
+	}
+	return nil
+}
+
 var tableSepRe = regexp.MustCompile(`^\|[\s:]*-+[\s:|-]*\|$`)
 
 // ExtractNavigationFromReadme parses a README.md for navigation structure.

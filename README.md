@@ -24,18 +24,18 @@ All settings are read from environment variables. `GITHUB_TOKEN`, `GITHUB_REPO`,
 | `GITHUB_TOKEN`             | *(empty)*                    | GitHub Personal Access Token *(required for private repos only)* |
 | `GITHUB_REPO`              | `tldr-pages/tldr`            | Repository to clone, e.g. `owner/repo`           |
 | `DOCS_PATH`                | `pages`                      | Path to docs inside the repo, e.g. `docs`        |
-| `GITHUB_BRANCH`            | `master`                     | Branch to track                                  |
+| `GITHUB_BRANCH`            | `main`                       | Branch to track                                  |
 | `REPO_PATH`                | `/tmp/docs-mcp-repo`         | Local path where the repo is cloned              |
 | `PORT`                     | `8000`                       | HTTP server port                                 |
 | `LOG_LEVEL`                | `INFO`                       | Log level: `DEBUG`, `INFO`, `WARN`, `ERROR`      |
 | `CACHE_TTL`                | `300`                        | Response cache TTL in seconds                    |
+| `CACHE_MAX_ENTRIES`        | `1000`                       | Maximum number of cached responses               |
 | `SYNC_INTERVAL`            | `1800`                       | Background git pull interval in seconds          |
 | `API_KEYS`                 | *(empty)*                    | Comma-separated Bearer tokens; empty = no auth   |
 | `GITHUB_WEBHOOK_SECRET`    | *(empty)*                    | HMAC secret for GitHub webhook verification      |
 | `CHUNK_SIZE`               | `800`                        | Document chunk size for BM25 indexing (chars)    |
 | `CHUNK_OVERLAP`            | `100`                        | Overlap between chunks (chars)                   |
 | `SNIPPET_SIZE`             | `400`                        | Search result snippet size (chars)               |
-| `MAX_SNIPPET_SIZE`         | `600`                        | Maximum snippet size (chars)                     |
 | `SNIPPETS_PER_RESULT`      | `2`                          | Number of snippets per search result             |
 | `MAX_DOCUMENT_LENGTH`      | `8000`                       | Max document length before truncation (chars)    |
 | `LARGE_DOCUMENT_THRESHOLD` | `10000`                      | Threshold for smart truncation (chars)           |
@@ -152,6 +152,23 @@ API_KEYS=my-secret-key ./docs-mcp
 ```
 
 Then pass `Authorization: Bearer my-secret-key` in requests. The `/health` and `/webhook/github` endpoints are not protected by API key auth.
+
+## Search Ranking & Tags
+
+Search uses BM25 ranking with boosts for matches in document name (+3.0) and path (+1.5).
+
+Documents can optionally include YAML frontmatter with tags to improve search relevance for terms not present in the body text:
+
+```markdown
+---
+tags: ["backup", "storage", "s3", "cost-optimization"]
+---
+
+# Backup Costs Analysis
+...
+```
+
+Tags get a +5.0 score boost when they match a query term — useful for synonyms or concepts implied by the content but not stated explicitly (e.g. tagging an S3 document with `storage`). Documents without frontmatter work normally.
 
 ## Development
 

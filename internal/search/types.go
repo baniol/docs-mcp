@@ -10,8 +10,8 @@ type SearchResult struct {
 
 // Searcher is the interface for searching indexed documents.
 type Searcher interface {
-	// Index adds or updates a document in the index.
-	Index(path, name, content string)
+	// Index adds or updates a document in the index. Tags are optional.
+	Index(path, name, content string, tags ...string)
 	// Search returns ranked results for a query.
 	Search(query string, maxResults int, snippetSize int, snippetsPerResult int) []SearchResult
 	// Rebuild clears the index and re-indexes all provided documents.
@@ -23,4 +23,5 @@ type IndexDoc struct {
 	Path    string
 	Name    string
 	Content string
+	Tags    []string
 }
