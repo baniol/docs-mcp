@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MIT license
 - GitHub Actions CI pipeline (format, vet, lint, test, build on Go 1.22/1.23)
 
+### Fixed
+- Race condition: concurrent webhook and background syncer could corrupt git worktree (added mutex to repo.Client)
+- Webhook endpoint accepted unbounded request body (added 1 MB limit via MaxBytesReader)
+
 ## [v0.1.0] - 2026-03-18
 
 ### Added

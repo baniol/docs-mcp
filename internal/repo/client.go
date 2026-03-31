@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/baniol/docs-mcp/internal/config"
 	gogit "github.com/go-git/go-git/v5"
@@ -15,6 +16,7 @@ import (
 
 // Client provides access to a locally cloned Git repository.
 type Client struct {
+	mu       sync.Mutex
 	cfg      *config.Config
 	repoPath string
 	docsPath string // absolute path to docs within repo
@@ -148,7 +150,11 @@ func (c *Client) GetDocContent(docPath string) (string, error) {
 }
 
 // Sync pulls latest changes. Returns true if HEAD changed.
+// Safe for concurrent calls — only one Pull runs at a time.
 func (c *Client) Sync() (bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if c.repo == nil {
 		return false, fmt.Errorf("repository not initialized")
 	}

@@ -146,9 +146,10 @@ func (s *Server) mcpHandler(w http.ResponseWriter, r *http.Request) {
 
 // webhookHandler — POST /webhook/github
 func (s *Server) webhookHandler(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB limit
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "read error", http.StatusInternalServerError)
+		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
 		return
 	}
 

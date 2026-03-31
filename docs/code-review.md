@@ -40,27 +40,17 @@ Wszystkie problemy P0/P1 naprawione:
 
 ## P1 — Istotne
 
-### 1. Race condition: webhook sync vs background syncer
+### 1. ~~Race condition: webhook sync vs background syncer~~ FIXED
 
-**Plik:** `internal/server/server.go:201-209`, `internal/syncer/syncer.go`
+**Plik:** `internal/repo/client.go`
 
-Webhook odpala goroutine z `SyncRepo()` + `BuildIndex()` + `InvalidateCache()`. Background syncer robi to samo co `SyncInterval` sekund. Oba operuja na tym samym `repo.Client` (git pull na tym samym worktree) bez synchronizacji. Dwa rownoczesne `Pull()` na jednym worktree moga uszkodzic stan repo.
+Dodano `sync.Mutex` do `repo.Client`, lockowany w `Sync()`. Serializuje rownoczesne wywolania z webhook i background syncer.
 
-`BM25Index` ma swoj mutex, ale `repo.Client` — nie. Problemem nie jest indeks, lecz warstwa git.
+### 2. ~~Brak limitu na webhook body~~ FIXED
 
-**Fix:** Dodac mutex na poziomie sync operacji w `repo.Client`, albo kanal serializujacy sync requesty (np. `chan struct{}` z jednym consumerem).
+**Plik:** `internal/server/server.go`
 
-### 2. Brak limitu na webhook body
-
-**Plik:** `internal/server/server.go:149`
-
-```go
-body, err := io.ReadAll(r.Body)
-```
-
-Klient moze wyslac dowolnie duzy payload — brak limitu na rozmiar body. Przy braku HMAC secret (opcjonalny) kazdy moze wyslac zapytanie.
-
-**Fix:** Uzyc `http.MaxBytesReader(w, r.Body, 1<<20)` (1 MB powinno wystarczyc na webhook payload).
+Dodano `http.MaxBytesReader(w, r.Body, 1<<20)` (1 MB limit). Przekroczenie zwraca 413.
 
 ### 3. Chunki indeksowane ale nieuzywane w wyszukiwaniu
 
@@ -233,8 +223,8 @@ Custom `min8()` moze byc zastapione przez `min(8, len(s))` z Go 1.21+ builtin.
 
 | Prio | # | Problem | Effort |
 |------|---|---------|--------|
-| P1 | 1 | Race condition webhook vs syncer | Sredni |
-| P1 | 2 | Brak limitu na webhook body | Maly |
+| ~~P1~~ | ~~1~~ | ~~Race condition webhook vs syncer~~ | FIXED |
+| ~~P1~~ | ~~2~~ | ~~Brak limitu na webhook body~~ | FIXED |
 | P1 | 3 | Chunki indeksowane ale nieuzywane | Sredni |
 | P2 | 4 | Cache bez limitu / eviction | Sredni |
 | P2 | 5 | ReadDoc niespojny cache | Maly |
