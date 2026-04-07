@@ -17,7 +17,7 @@ go build -o docs-mcp ./cmd/server
 
 ## Configuration
 
-All settings are read from environment variables. `GITHUB_TOKEN`, `GITHUB_REPO`, and `DOCS_PATH` are required.
+All settings are read from environment variables. `GITHUB_REPO` and `DOCS_PATH` are required; `GITHUB_TOKEN` is required only for private repositories.
 
 | Variable                   | Default                      | Description                                      |
 |----------------------------|------------------------------|--------------------------------------------------|
@@ -155,7 +155,7 @@ Then pass `Authorization: Bearer my-secret-key` in requests. The `/health` and `
 
 ## Search Ranking & Tags
 
-Search uses BM25 ranking with boosts for matches in document name (+3.0) and path (+1.5).
+Search uses BM25 ranking with boosts for matches in document name (+3.0), path (+1.5), and YAML frontmatter tags (+5.0).
 
 Documents can optionally include YAML frontmatter with tags to improve search relevance for terms not present in the body text:
 
